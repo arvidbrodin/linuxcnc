@@ -436,7 +436,7 @@ void do_homing_sequence(void)
                      || (home_sequence     != ABS(H[i].home_sequence))
                     ) {
                     H[i].joint_in_sequence = 0;
-                } 
+                }
             }
         }
         sequence_state = HOME_SEQUENCE_START;
@@ -447,7 +447,7 @@ void do_homing_sequence(void)
         // Request to home all joints or a single sequence
         // A negative H[i].home_sequence means sync final move
         if (!sequence_is_set) {
-            // sequence_is_set not otherwise established: home-all 
+            // sequence_is_set not otherwise established: home-all
             for (i=0; i < EMCMOT_MAX_JOINTS; i++) {
                 joint = &joints[i];
                 H[i].joint_in_sequence = 1;
@@ -596,7 +596,7 @@ void do_homing(void)
 	if (H[joint_num].home_state != HOME_IDLE) {
 	    homing_flag = 1; /* at least one joint is homing */
 	}
-	
+
 	/* when an joint is homing, 'check_for_faults()' ignores its limit
 	   switches, so that this code can do the right thing with them. Once
 	   the homing process is finished, the 'check_for_faults()' resumes
@@ -659,7 +659,7 @@ void do_homing(void)
 		} else {
 		    H[joint_num].home_state = HOME_UNLOCK_WAIT;
 		    immediate_state = 1;
-		}		     
+		}
 		break;
 
 	    case HOME_UNLOCK:
@@ -1091,7 +1091,7 @@ void do_homing(void)
 
 	    case HOME_SET_INDEX_POSITION:
 		/* This state is called when the encoder has been reset at
-		   the index pulse position.  It sets the current joint 
+		   the index pulse position.  It sets the current joint
 		   position to 'home_offset', which is the location of the
 		   index pulse in joint coordinates. */
 		/* set the current position to 'home_offset' */
@@ -1173,7 +1173,7 @@ void do_homing(void)
 		    /* clamp on max vel for this joint */
 		    if (joint->free_tp.max_vel > joint->vel_limit)
 			joint->free_tp.max_vel = joint->vel_limit;
-		} else { 
+		} else {
 		    joint->free_tp.max_vel = joint->vel_limit;
 		}
 		/* start the move */
@@ -1183,7 +1183,7 @@ void do_homing(void)
 
 	    case HOME_FINAL_MOVE_WAIT:
 		/* This state is called while the machine makes its final
-		   move to the home position.  It terminates when the machine 
+		   move to the home position.  It terminates when the machine
 		   arrives at the final location. If the move hits a limit
 		   before it arrives, the home is aborted. */
 		/* have we arrived (and stopped) at home? */

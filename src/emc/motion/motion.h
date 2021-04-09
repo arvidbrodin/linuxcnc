@@ -82,9 +82,9 @@ to another.
 #include "rtapi_bool.h"
 #include "state_tag.h"
 
-// define a special value to denote an invalid motion ID 
+// define a special value to denote an invalid motion ID
 // NB: do not ever generate a motion id of  MOTION_INVALID_ID
-// this should be really be tested for in command.c 
+// this should be really be tested for in command.c
 
 #define MOTION_INVALID_ID INT_MIN
 #define MOTION_ID_VALID(x) ((x) != MOTION_INVALID_ID)
@@ -133,7 +133,7 @@ extern "C" {
 	EMCMOT_CLEAR_PROBE_FLAGS,	/* clears probeTripped flag */
 	EMCMOT_PROBE,		/* go to pos, stop if probe trips, record
 				   trip pos */
-	EMCMOT_RIGID_TAP,	/* go to pos, with sync to spindle speed, 
+	EMCMOT_RIGID_TAP,	/* go to pos, with sync to spindle speed,
 				   then return to initial pos */
 
 	EMCMOT_SET_VEL,		/* set the velocity for subsequent moves */
@@ -320,7 +320,7 @@ extern "C" {
   ----------v-----------------v--------------------v-------------------v
   | AF | FE | AH | HD | H | HS | NHL | PHL | - | - | ER | IP | AC | EN |
   ----------^-----------------^--------------------^-------------------^
-               
+
 
   x = unused
 
@@ -397,7 +397,7 @@ Suggestion: Split this in to an Error and a Status flag register..
 	float rev_trim;		/* correction for reverse movement */
 	float fwd_slope;	/* slopes between here and next pt */
 	float rev_slope;
-    } emcmot_comp_entry_t; 
+    } emcmot_comp_entry_t;
 
 
 #define EMCMOT_COMP_SIZE 256
@@ -557,7 +557,7 @@ Suggestion: Split this in to an Error and a Status flag register..
     int at_speed;
 	int fault; /* amplifier fault */
     } spindle_status_t;
-    
+
     typedef struct {
 	double pos_cmd;		/* commanded axis position */
 	double teleop_vel_cmd;		/* comanded axis velocity */
@@ -641,7 +641,7 @@ Suggestion: Split this in to an Error and a Status flag register..
 	EmcPose probedPos;	/* Axis positions stored as soon as possible
 				   after last probeTripped */
 
-	
+
 	int synch_di[EMCMOT_MAX_DIO]; /* inputs to the motion controller, queried by g-code */
 	int synch_do[EMCMOT_MAX_DIO]; /* outputs to the motion controller, queried by g-code */
 	double analog_input[EMCMOT_MAX_AIO]; /* inputs to the motion controller, queried by g-code */
@@ -723,10 +723,10 @@ Suggestion: Split this in to an Error and a Status flag register..
 
 	KINEMATICS_TYPE kinType;
 
-        int numDIO;             /* userdefined number of digital IO. default is 4. (EMCMOT_MAX_DIO=64), 
+        int numDIO;             /* userdefined number of digital IO. default is 4. (EMCMOT_MAX_DIO=64),
                                    but can be altered at motmod insmod time */
 
-        int numAIO;             /* userdefined number of analog IO. default is 4. (EMCMOT_MAX_AIO=16), 
+        int numAIO;             /* userdefined number of analog IO. default is 4. (EMCMOT_MAX_AIO=16),
                                    but can be altered at motmod insmod time */
 
 /*! \todo FIXME - all structure members beyond this point are in limbo */
