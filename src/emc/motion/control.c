@@ -1195,22 +1195,6 @@ static void get_pos_cmds(long period)
 
 	    if(joint->acc_limit > emcmotStatus->acc)
 		joint->acc_limit = emcmotStatus->acc;
-	    /* compute joint velocity limit */
-            if (   (emcmotStatus->motion_state != EMCMOT_MOTION_FREE)
-                && get_home_is_idle(joint_num) ) {
-                /* velocity limit = joint limit * global scale factor */
-                /* the global factor is used for feedrate override */
-                vel_lim = joint->vel_limit * emcmotStatus->net_feed_scale;
-                /* must not be greater than the joint physical limit */
-                if (vel_lim > joint->vel_limit) {
-                    vel_lim = joint->vel_limit;
-                }
-                /* set vel limit in free TP */
-               if (vel_lim < joint->free_tp.max_vel)
-                   joint->free_tp.max_vel = vel_lim;
-            } else {
-                /* except if homing, when we set free_tp max vel in do_homing */
-            }
             /* set acc limit in free TP */
             /* execute free TP */
             if (joint->wheel_jjog_active) {
