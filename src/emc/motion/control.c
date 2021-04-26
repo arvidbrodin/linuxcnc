@@ -646,8 +646,8 @@ static void process_probe_inputs(void)
             }
 
             // abort any joint jogs
-            if(joint->free_tp.enable == 1) {
-                joint->free_tp.enable = 0;
+            if (smooth1d_is_active(joint->free_tp)) {
+                smooth1d_stop(joint->free_tp);
                 // since homing uses free_tp, this protection of aborted
                 // is needed so the user gets the correct error.
                 if(!aborted) aborted=2;
@@ -765,8 +765,7 @@ static void set_operating_mode(void)
 	    /* point to joint data */
 	    joint = &joints[joint_num];
 	    /* disable free mode planner */
-	    joint->free_tp.enable = 0;
-	    joint->free_tp.curr_vel = 0.0;
+	    smooth1d_stop(joint->free_tp);
 	    /* drain coord mode interpolators */
 	    cubicDrain(&(joint->cubic));
 	    if (GET_JOINT_ACTIVE_FLAG(joint)) {
@@ -804,7 +803,9 @@ static void set_operating_mode(void)
 	for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
 	    /* point to joint data */
 	    joint = &joints[joint_num];
-	    joint->free_tp.curr_pos = joint->pos_cmd;
+	    if (smooth1d_reset_pos(joint->free_tp, lin_to_SI(joint->pos_cmd))) {
+		reportError("Cannot reset free planner position while in motion");
+	    }
 	    if (GET_JOINT_ACTIVE_FLAG(joint)) {
 		SET_JOINT_ENABLE_FLAG(joint, 1);
 		set_joint_homing(joint_num,0);
@@ -867,7 +868,9 @@ static void set_operating_mode(void)
 			/* point to joint data */
 			joint = &joints[joint_num];
 			/* update free planner positions */
-			joint->free_tp.curr_pos = joint->pos_cmd;
+			if (smooth1d_reset_pos(joint->free_tp, lin_to_SI(joint->pos_cmd))) {
+			    reportError("Cannot reset free planner position while in motion");
+			}
 		    }
 		}
 	    }
@@ -906,9 +909,9 @@ static void set_operating_mode(void)
 		    /* point to joint data */
 		    joint = &joints[joint_num];
 		    /* set joint planner curr_pos to current location */
-		    joint->free_tp.curr_pos = joint->pos_cmd;
-		    /* but it can stay disabled until a move is required */
-		    joint->free_tp.enable = 0;
+		    if (smooth1d_reset_pos(joint->free_tp, lin_to_SI(joint->pos_cmd))) {
+			reportError("Cannot reset free planner position while in motion");
+		    }
 		}
 		SET_MOTION_COORD_FLAG(0);
 		SET_MOTION_TELEOP_FLAG(0);
@@ -939,11 +942,10 @@ static void handle_jjogwheels(void)
     emcmot_joint_t *joint;
     joint_hal_t *joint_data;
     int new_jjog_counts, delta;
-    double distance, pos, stop_dist;
+    double distance, stop_dist;
     static int first_pass = 1;	/* used to set initial conditions */
 
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
-        double jaccel_limit;
 	/* point to joint data */
 	joint_data = &(emcmot_hal_data->joint[joint_num]);
 	joint = &joints[joint_num];
@@ -952,13 +954,6 @@ static void handle_jjogwheels(void)
 	    continue;
 	}
 
-        // disallow accel bogus fractions
-        if (    (*(joint_data->jjog_accel_fraction) > 1) 
-             || (*(joint_data->jjog_accel_fraction) < 0) ) {
-            jaccel_limit = joint->acc_limit;
-        } else {
-            jaccel_limit = (*(joint_data->jjog_accel_fraction)) * joint->acc_limit;
-        }
 	/* get counts from jogwheel */
 	new_jjog_counts = *(joint_data->jjog_counts);
 	delta = new_jjog_counts - joint->old_jjog_counts;
@@ -974,7 +969,7 @@ static void handle_jjogwheels(void)
 	    continue;
 	}
         if (GET_MOTION_TELEOP_FLAG()) {
-            joint->free_tp.enable = 0;
+	    smooth1d_stop(joint->free_tp);
             return;
         }
 	/* must be in free mode and enabled */
@@ -1027,13 +1022,13 @@ static void handle_jjogwheels(void)
 	    continue;
 	}
 	/* calc target position for jog */
-	pos = joint->free_tp.pos_cmd + distance;
+	double pos_cmd = SI_to_lin(smooth1d_get_pos_cmd(joint->free_tp)) + distance;
 	/* don't jog past limits */
 	refresh_jog_limits(joint,joint_num);
-	if (pos > joint->max_jog_limit) {
+	if (pos_cmd > joint->max_jog_limit) {
 	    continue;
 	}
-	if (pos < joint->min_jog_limit) {
+	if (pos_cmd < joint->min_jog_limit) {
 	    continue;
 	}
 	/* The default is to move exactly as far as the wheel commands,
@@ -1046,23 +1041,19 @@ static void handle_jjogwheels(void)
 	if ( *(joint_data->jjog_vel_mode) ) {
             double v = joint->vel_limit * emcmotStatus->net_feed_scale;
 	    /* compute stopping distance at max speed */
-	    stop_dist = v * v / ( 2 * jaccel_limit);
+	    stop_dist = v * v / ( 2 * joint->acc_limit);
 	    /* if commanded position leads the actual position by more
 	       than stopping distance, discard excess command */
-	    if ( pos > joint->pos_cmd + stop_dist ) {
-		pos = joint->pos_cmd + stop_dist;
-	    } else if ( pos < joint->pos_cmd - stop_dist ) {
-		pos = joint->pos_cmd - stop_dist;
+	    if (pos_cmd > joint->pos_cmd + stop_dist) {
+		pos_cmd = joint->pos_cmd + stop_dist;
+	    } else if (pos_cmd < joint->pos_cmd - stop_dist) {
+		pos_cmd = joint->pos_cmd - stop_dist;
 	    }
 	}
-        /* set target position and use full velocity and accel */
-        joint->free_tp.pos_cmd = pos;
-        joint->free_tp.max_vel = joint->vel_limit;
-        joint->free_tp.max_acc = jaccel_limit;
 	/* lock out other jog sources */
 	joint->wheel_jjog_active = 1;
         /* and let it go */
-        joint->free_tp.enable = 1;
+	smooth1d_replan(joint->free_tp, lin_to_SI(pos_cmd), lin_to_SI(joint->vel_limit), lin_to_SI(joint->acc_limit));
 	SET_JOINT_ERROR_FLAG(joint, 0);
 	/* clear joint homed flag(s) if we don't have forward kins.
 	   Otherwise, a transition into coordinated mode will incorrectly
@@ -1156,7 +1147,6 @@ static void get_pos_cmds(long period)
     emcmot_joint_t *joint;
     emcmot_axis_t *axis;
     double positions[EMCMOT_MAX_JOINTS];
-    double vel_lim;
 
     /* used in teleop mode to compute the max accell requested */
     int onlimit = 0;
@@ -1195,33 +1185,15 @@ static void get_pos_cmds(long period)
 
 	    if(joint->acc_limit > emcmotStatus->acc)
 		joint->acc_limit = emcmotStatus->acc;
-            /* set acc limit in free TP */
             /* execute free TP */
-            if (joint->wheel_jjog_active) {
-                double jaccel_limit;
-                joint_hal_t *joint_data;
-                joint_data = &(emcmot_hal_data->joint[joint_num]);
-                if (    (*(joint_data->jjog_accel_fraction) > 1)
-                     || (*(joint_data->jjog_accel_fraction) < 0) ) {
-                     jaccel_limit = joint->acc_limit;
-                } else {
-                   jaccel_limit = (*(joint_data->jjog_accel_fraction)) * joint->acc_limit;
-                }
-                joint->free_tp.max_acc = jaccel_limit;
-            } else {
-                joint->free_tp.max_acc = joint->acc_limit;
-            }
-            simple_tp_update(&(joint->free_tp), servo_period );
+	    smooth1d_update(joint->free_tp, servo_period);
             /* copy free TP output to pos_cmd and coarse_pos */
-            joint->pos_cmd = joint->free_tp.curr_pos;
-            joint->vel_cmd = joint->free_tp.curr_vel;
-            //no acceleration output form simple_tp, but the pin will
-            //still show the acceleration from the interpolation.
-            //its delayed, but thats ok during jogging or homing.
-            joint->acc_cmd = 0.0;
-            joint->coarse_pos = joint->free_tp.curr_pos;
+            joint->pos_cmd = SI_to_lin(smooth1d_get_pos(joint->free_tp));
+            joint->vel_cmd = SI_to_lin(smooth1d_get_vel(joint->free_tp));
+            joint->acc_cmd = SI_to_lin(smooth1d_get_acc(joint->free_tp));
+            joint->coarse_pos = joint->pos_cmd;
             /* update joint status flag and overall status flag */
-            if ( joint->free_tp.active ) {
+            if (smooth1d_is_active(joint->free_tp)) {
 		/* active TP means we're moving, so not in position */
 		SET_JOINT_INPOS_FLAG(joint, 0);
 		SET_MOTION_INPOS_FLAG(0);
@@ -1920,7 +1892,7 @@ static void output_to_hal(void)
         int i;
         double v2 = 0.0;
         for(i=0; i < ALL_JOINTS; i++)
-            if(GET_JOINT_ACTIVE_FLAG(&(joints[i])) && joints[i].free_tp.active)
+            if(GET_JOINT_ACTIVE_FLAG(&(joints[i])) && smooth1d_is_active(joints[i].free_tp))
                 v2 += joints[i].vel_cmd * joints[i].vel_cmd;
         if(v2 > 0.0)
             emcmotStatus->current_vel = (*emcmot_hal_data->current_vel) = sqrt(v2);
@@ -1934,7 +1906,7 @@ static void output_to_hal(void)
        to one of the debug parameters.  You can also comment out these lines
        and copy elsewhere if you want to observe an automatic variable that
        isn't in scope here. */
-    emcmot_hal_data->debug_bit_0 = joints[1].free_tp.active;
+    emcmot_hal_data->debug_bit_0 = smooth1d_is_active(joints[1].free_tp);
     emcmot_hal_data->debug_bit_1 = emcmotStatus->enables_new & AF_ENABLED;
     emcmot_hal_data->debug_float_0 = emcmotStatus->spindle_status[0].speed;
     emcmot_hal_data->debug_float_1 = emcmotStatus->spindleSync;
@@ -1998,9 +1970,9 @@ static void output_to_hal(void)
 	*(joint_data->f_error) = joint->ferror;
 	*(joint_data->f_error_lim) = joint->ferror_limit;
 
-	*(joint_data->free_pos_cmd) = joint->free_tp.pos_cmd;
-	*(joint_data->free_vel_lim) = joint->free_tp.max_vel;
-	*(joint_data->free_tp_enable) = joint->free_tp.enable;
+	*(joint_data->free_pos_cmd) = SI_to_lin(smooth1d_get_pos_cmd(joint->free_tp));
+	*(joint_data->free_vel_lim) = SI_to_lin(smooth1d_get_vel_limit(joint->free_tp));
+	*(joint_data->free_tp_enable) = smooth1d_is_active(joint->free_tp);
 	*(joint_data->kb_jjog_active) = joint->kb_jjog_active;
 	*(joint_data->wheel_jjog_active) = joint->wheel_jjog_active;
 

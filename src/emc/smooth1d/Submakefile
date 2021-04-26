@@ -1,0 +1,7 @@
+
+# Let cargo decide if the target needs to be rebuilt or not
+.PHONY: objects/rtemc/motion/libsmooth1d.a
+
+objects/rtemc/motion/libsmooth1d.a:
+	cd emc/smooth1d && cargo build --release
+	cp emc/smooth1d/target/release/libsmooth1d.a objects/rtemc/motion/

@@ -149,6 +149,19 @@ static int setServoCycleTime(double secs);
 /***********************************************************************
 *                     PUBLIC FUNCTION CODE                             *
 ************************************************************************/
+
+/* Convert "machine linear units" to SI base unit (m) */
+double lin_to_SI(double value)
+{
+        return value*emcmotConfig->linear_scale;
+}
+
+/* Convert SI base unit (m) to "machine linear units" */
+double SI_to_lin(double value)
+{
+        return value/emcmotConfig->linear_scale;
+}
+
 int joint_is_lockable(int joint_num) {
     return (unlock_joints_mask & (1 << joint_num) );
 }
@@ -166,7 +179,7 @@ void switch_to_teleop_mode(void) {
 
     for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
         joint = &joints[joint_num];
-        if (joint != 0) { joint->free_tp.enable = 0; }
+        if (joint != 0) { smooth1d_stop(joint->free_tp); }
     }
 
     emcmotDebug->teleoperating = 1;
@@ -648,8 +661,6 @@ static int export_joint(int num, joint_hal_t * addr)
     if ((retval = hal_pin_bit_newf(HAL_OUT, &(addr->error), mot_comp_id, "joint.%d.error", num)) != 0) return retval;
     if ((retval = hal_pin_bit_newf(HAL_OUT, &(addr->f_errored), mot_comp_id, "joint.%d.f-errored", num)) != 0) return retval;
     if ((retval = hal_pin_bit_newf(HAL_OUT, &(addr->faulted), mot_comp_id, "joint.%d.faulted", num)) != 0) return retval;
-    if ((retval = hal_pin_float_newf(HAL_IN,&(addr->jjog_accel_fraction),mot_comp_id,"joint.%d.jog-accel-fraction", num)) != 0) return retval;
-    *addr->jjog_accel_fraction = 1.0; // fraction of accel for wheel jjogs
 
     if ( joint_is_lockable(num) ) {
         // these pins may be needed for rotary joints
@@ -861,6 +872,7 @@ static int init_comm_buffers(void)
 	joint->ferror = 0.0;
 	joint->ferror_limit = joint->min_ferror;
 	joint->ferror_high_mark = 0.0;
+	joint->free_tp = smooth1d_new(lin_to_SI(0.0));
 
 	/* init internal info */
 	cubicInit(&(joint->cubic));

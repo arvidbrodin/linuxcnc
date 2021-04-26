@@ -130,22 +130,20 @@ static all_joints_home_data_t *joint_home_data = 0;
 static void home_start_move(emcmot_joint_t * joint, double vel)
 {
     double joint_range;
+    double pos_cmd;
 
     /* set up a long move */
     joint_range = joint->max_pos_limit - joint->min_pos_limit;
+
     if (vel > 0.0) {
-	joint->free_tp.pos_cmd = joint->pos_cmd + 2.0 * joint_range;
+	pos_cmd = joint->pos_cmd + 2.0 * joint_range;
     } else {
-	joint->free_tp.pos_cmd = joint->pos_cmd - 2.0 * joint_range;
+	pos_cmd = joint->pos_cmd - 2.0 * joint_range;
     }
-    if (fabs(vel) < joint->vel_limit) {
-	joint->free_tp.max_vel = fabs(vel);
-    } else {
-        /* clamp on max vel for this joint */
-	joint->free_tp.max_vel = joint->vel_limit;
-    }
+
     /* start the move */
-    joint->free_tp.enable = 1;
+    double vel_limit = fmin(fabs(vel), joint->vel_limit);
+    smooth1d_replan(joint->free_tp, lin_to_SI(pos_cmd), lin_to_SI(vel_limit), lin_to_SI(joint->acc_limit));
 } // home_start_move()
 
 /* 'home_do_moving_checks()' is called from states where the machine
@@ -167,9 +165,8 @@ static void home_do_moving_checks(emcmot_joint_t * joint,int jno)
 	}
     }
     /* check for reached end of move */
-    if (!joint->free_tp.active) {
+    if (!smooth1d_is_active(joint->free_tp)) {
 	/* reached end of move without hitting switch */
-	joint->free_tp.enable = 0;
 	reportError(_("end of move in home state %d"), H[jno].home_state);
         H[jno].home_state = HOME_ABORT;
 	immediate_state = 1;
@@ -516,7 +513,7 @@ void do_homing_sequence(void)
 	    if(ABS(H[i].home_sequence) == home_sequence) {
                 if (!H[i].joint_in_sequence) continue;
 		/* start this joint */
-	        joint->free_tp.enable = 0;
+		smooth1d_stop(joint->free_tp);
 		H[i].home_state = HOME_START;
 		seen++;
 	    }
@@ -642,7 +639,7 @@ void do_homing(void)
                 }
 		H[joint_num].at_home = 0;
 		/* stop any existing motion */
-		joint->free_tp.enable = 0;
+		smooth1d_stop(joint->free_tp);
 		/* reset delay counter */
 		H[joint_num].pause_timer = 0;
 		/* figure out exactly what homing sequence is needed */
@@ -705,7 +702,7 @@ void do_homing(void)
 		   location where the home switch is already tripped. It
 		   starts a move away from the switch. */
 		/* is the joint still moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -731,7 +728,7 @@ void do_homing(void)
 		/* are we off home switch yet? */
 		if (! home_sw_active) {
 		    /* yes, stop motion */
-		    joint->free_tp.enable = 0;
+		    smooth1d_stop(joint->free_tp);
 		    /* begin initial search */
 		    H[joint_num].home_state = HOME_INITIAL_SEARCH_START;
 		    immediate_state = 1;
@@ -746,7 +743,7 @@ void do_homing(void)
 		   fairly fast, because once the switch is found another
 		   slower move will be used to set the exact home position. */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -779,7 +776,7 @@ void do_homing(void)
 		/* have we hit home switch yet? */
 		if (home_sw_active) {
 		    /* yes, stop motion */
-		    joint->free_tp.enable = 0;
+		    smooth1d_stop(joint->free_tp);
 		    /* go to next step */
 		    H[joint_num].home_state = HOME_SET_COARSE_POSITION;
 		    immediate_state = 1;
@@ -801,7 +798,9 @@ void do_homing(void)
 		   motor position */
 		joint->pos_cmd += offset;
 		joint->pos_fb += offset;
-		joint->free_tp.curr_pos += offset;
+		if (smooth1d_reset_pos(joint->free_tp, smooth1d_get_pos(joint->free_tp) + lin_to_SI(offset))) {
+		    reportError("Cannot reset free planner position while in motion");
+		}
 		joint->motor_offset -= offset;
 		/* The next state depends on the signs of 'search_vel' and
 		   'latch_vel'.  If they are the same, that means we must
@@ -827,7 +826,7 @@ void do_homing(void)
 		   move that will back off of the switch in preparation for a
 		   final slow move that captures the exact switch location. */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -862,7 +861,7 @@ void do_homing(void)
 		/* are we off home switch yet? */
 		if (! home_sw_active) {
 		    /* yes, stop motion */
-		    joint->free_tp.enable = 0;
+		    smooth1d_stop(joint->free_tp);
 		    /* begin final search */
 		    H[joint_num].home_state = HOME_RISE_SEARCH_START;
 		    immediate_state = 1;
@@ -876,7 +875,7 @@ void do_homing(void)
 		   point where the home switch trips.  It moves at
 		   'latch_vel' and looks for a rising edge on the switch */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -918,7 +917,7 @@ void do_homing(void)
 			break;
 		    } else {
 			/* no index pulse, stop motion */
-			joint->free_tp.enable = 0;
+			smooth1d_stop(joint->free_tp);
 			/* go to next step */
 			H[joint_num].home_state = HOME_SET_SWITCH_POSITION;
 			immediate_state = 1;
@@ -933,7 +932,7 @@ void do_homing(void)
 		   point where the home switch releases.  It moves at
 		   'latch_vel' and looks for a falling edge on the switch */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -975,7 +974,7 @@ void do_homing(void)
 			break;
 		    } else {
 			/* no index pulse, stop motion */
-			joint->free_tp.enable = 0;
+			smooth1d_stop(joint->free_tp);
 			/* go to next step */
 			H[joint_num].home_state = HOME_SET_SWITCH_POSITION;
 			immediate_state = 1;
@@ -1000,7 +999,9 @@ void do_homing(void)
 		   motor position */
 		joint->pos_cmd += offset;
 		joint->pos_fb += offset;
-		joint->free_tp.curr_pos += offset;
+		if (smooth1d_reset_pos(joint->free_tp, smooth1d_get_pos(joint->free_tp) + lin_to_SI(offset))) {
+		    reportError("Cannot reset free planner position while in motion");
+		}
 		joint->motor_offset -= offset;
                 if (H[joint_num].home_flags & HOME_ABSOLUTE_ENCODER) {
                     if (H[joint_num].home_flags & HOME_NO_FINAL_MOVE) {
@@ -1023,7 +1024,7 @@ void do_homing(void)
 		   reset its counter to zero and clear the enable when the
 		   next index pulse arrives. */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -1045,7 +1046,9 @@ void do_homing(void)
 		   motor position */
 		joint->pos_cmd += offset;
 		joint->pos_fb += offset;
-		joint->free_tp.curr_pos += offset;
+		if (smooth1d_reset_pos(joint->free_tp, smooth1d_get_pos(joint->free_tp) + lin_to_SI(offset))) {
+		    reportError("Cannot reset free planner position while in motion");
+		}
 		joint->motor_offset -= offset;
 		/* set the index enable */
 		H[joint_num].index_enable = 1;
@@ -1080,7 +1083,7 @@ void do_homing(void)
 		   enable when it does */
 		if ( H[joint_num].index_enable == 0 ) {
 		    /* yes, stop motion */
-		    joint->free_tp.enable = 0;
+		    smooth1d_stop(joint->free_tp);
 		    /* go to next step */
 		    H[joint_num].home_state = HOME_SET_INDEX_POSITION;
 		    immediate_state = 1;
@@ -1099,7 +1102,9 @@ void do_homing(void)
 		joint->pos_fb = joint->motor_pos_fb -
 		    (joint->backlash_filt + joint->motor_offset);
 		joint->pos_cmd = joint->pos_fb;
-		joint->free_tp.curr_pos = joint->pos_fb;
+		if (smooth1d_reset_pos(joint->free_tp, lin_to_SI(joint->pos_fb))) {
+		    reportError("Cannot reset free planner position while in motion");
+		}
 
 		if (H[joint_num].home_flags & HOME_INDEX_NO_ENCODER_RESET) {
 		   /* Special case: encoder does not reset on index pulse.
@@ -1108,7 +1113,7 @@ void do_homing(void)
 		   offset = H[joint_num].home_offset - joint->pos_fb;
 		   joint->pos_cmd          += offset;
 		   joint->pos_fb           += offset;
-		   joint->free_tp.curr_pos += offset;
+		   smooth1d_reset_pos(joint->free_tp, lin_to_SI(joint->pos_fb + offset));
 		   joint->motor_offset     -= offset;
 		}
 
@@ -1123,7 +1128,7 @@ void do_homing(void)
 		   which is not neccessarily the position of the home switch
 		   or index pulse. */
 		/* is the joint already moving? */
-		if (joint->free_tp.active) {
+		if (smooth1d_is_active(joint->free_tp)) {
 		    /* yes, reset delay, wait until joint stops */
 		    H[joint_num].pause_timer = 0;
 		    break;
@@ -1153,10 +1158,8 @@ void do_homing(void)
                             if (!H[jno].joint_in_sequence) continue;
                             if (ABS(H[jno].home_sequence) != home_sequence) {continue;}
                             if (H[jno].home_flags & HOME_ABSOLUTE_ENCODER)  {continue;}
-                            if (   (H[jno].home_state != HOME_FINAL_MOVE_START)
-                                ||
-                                   (jtmp->free_tp.active)
-                                ) {
+                            if ((H[jno].home_state != HOME_FINAL_MOVE_START) ||
+                                smooth1d_is_active(jtmp->free_tp)) {
                                 H[home_sequence].sync_final_move = 0;
                                 break;
                             }
@@ -1166,18 +1169,14 @@ void do_homing(void)
                 }
 		H[joint_num].pause_timer = 0;
 		/* plan a move to home position */
-		joint->free_tp.pos_cmd = H[joint_num].home;
 		/* if home_vel is set (>0) then we use that, otherwise we rapid there */
-		if (H[joint_num].home_final_vel > 0) {
-		    joint->free_tp.max_vel = fabs(H[joint_num].home_final_vel);
-		    /* clamp on max vel for this joint */
-		    if (joint->free_tp.max_vel > joint->vel_limit)
-			joint->free_tp.max_vel = joint->vel_limit;
-		} else {
-		    joint->free_tp.max_vel = joint->vel_limit;
+		double vel_limit = joint->vel_limit;
+		if ((H[joint_num].home_final_vel > 0) &&
+		    (H[joint_num].home_final_vel < vel_limit)) {
+		    vel_limit = H[joint_num].home_final_vel;
 		}
 		/* start the move */
-		joint->free_tp.enable = 1;
+		smooth1d_replan(joint->free_tp, lin_to_SI(H[joint_num].home), lin_to_SI(vel_limit), lin_to_SI(joint->acc_limit));
 		H[joint_num].home_state = HOME_FINAL_MOVE_WAIT;
 		break;
 
@@ -1187,9 +1186,7 @@ void do_homing(void)
 		   arrives at the final location. If the move hits a limit
 		   before it arrives, the home is aborted. */
 		/* have we arrived (and stopped) at home? */
-		if (!joint->free_tp.active) {
-		    /* yes, stop motion */
-		    joint->free_tp.enable = 0;
+		if (!smooth1d_is_active(joint->free_tp)) {
 		    /* we're finally done */
 		    H[joint_num].home_state = HOME_LOCK;
 		    immediate_state = 1;
@@ -1248,7 +1245,7 @@ void do_homing(void)
                 H[joint_num].homed = 0;
                 H[joint_num].at_home = 0;
                 H[joint_num].joint_in_sequence = 0;
-		joint->free_tp.enable = 0;
+		smooth1d_stop(joint->free_tp);
 		H[joint_num].home_state = HOME_IDLE;
 		H[joint_num].index_enable = 0;
 		immediate_state = 1;

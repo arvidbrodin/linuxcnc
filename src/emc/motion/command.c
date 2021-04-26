@@ -549,7 +549,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
 		    /* point to joint struct */
 		    joint = &joints[joint_num];
 		    /* tell joint planner to stop */
-		    joint->free_tp.enable = 0;
+		    smooth1d_stop(joint->free_tp);
 		    /* stop homing if in progress */
 		    if ( ! get_home_is_idle(joint_num)) {
 			set_home_abort(joint_num);
@@ -581,7 +581,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
 		/* do nothing in coord mode */
 	    } else {
 		/* tell joint planner to stop */
-		if (joint != 0) joint->free_tp.enable = 0;
+		if (joint != 0) smooth1d_stop(joint->free_tp);
 		/* validate joint */
 		if (joint == 0) { break; }
 		/* stop homing if in progress */
@@ -675,6 +675,13 @@ void emcmotCommandHandler(void *arg, long servo_period)
 	    } else {
 	        emcmotConfig->numSpindles = emcmotCommand->spindle;
 	    }
+	    break;
+
+	case EMCMOT_SET_LINEAR_SCALE:
+	    /* set the length of a "machine unit", in meters */
+	    rtapi_print_msg(RTAPI_MSG_DBG, "EMCMOT_SET_LINEAR_SCALE");
+	    rtapi_print_msg(RTAPI_MSG_DBG, " %f", emcmotCommand->scale);
+	    emcmotConfig->linear_scale = emcmotCommand->scale;
 	    break;
 
 	case EMCMOT_SET_WORLD_HOME:
@@ -842,19 +849,13 @@ void emcmotCommandHandler(void *arg, long servo_period)
 	        }
 	        /* set destination of jog */
 	        refresh_jog_limits(joint,joint_num);
-	        if (emcmotCommand->vel > 0.0) {
-		    joint->free_tp.pos_cmd = joint->max_jog_limit;
-	        } else {
-		    joint->free_tp.pos_cmd = joint->min_jog_limit;
-	        }
-	        /* set velocity of jog */
-	        joint->free_tp.max_vel = fabs(emcmotCommand->vel);
-	        /* use max joint accel */
-	        joint->free_tp.max_acc = joint->acc_limit;
 	        /* lock out other jog sources */
 	        joint->kb_jjog_active = 1;
-	        /* and let it go */
-	        joint->free_tp.enable = 1;
+	        if (emcmotCommand->vel > 0.0) {
+		    smooth1d_replan(joint->free_tp, lin_to_SI(joint->max_jog_limit), lin_to_SI(fabs(emcmotCommand->vel)), lin_to_SI(joint->acc_limit));
+	        } else {
+		    smooth1d_replan(joint->free_tp, lin_to_SI(joint->min_jog_limit), lin_to_SI(fabs(emcmotCommand->vel)), lin_to_SI(joint->acc_limit));
+	        }
                 for (axis_num = 0; axis_num < EMCMOT_MAX_AXIS; axis_num++) {
                     axis = &axes[axis_num];
                     if (axis != 0) { axis->teleop_tp.enable = 0; }
@@ -895,7 +896,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
 	        axis->kb_ajog_active = 1;
                 for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
                     joint = &joints[joint_num];
-                    if (joint != 0) { joint->free_tp.enable = 0; }
+                    if (joint != 0) { smooth1d_stop(joint->free_tp); }
                 }
 	        axis->teleop_tp.enable = 1;
             }
@@ -931,29 +932,23 @@ void emcmotCommandHandler(void *arg, long servo_period)
 		    break;
 	        }
 	        /* set target position for jog */
+		double pos_cmd = SI_to_lin(smooth1d_get_pos_cmd(joint->free_tp));
 	        if (emcmotCommand->vel > 0.0) {
-		    tmp1 = joint->free_tp.pos_cmd + emcmotCommand->offset;
-	        } else {
-		    tmp1 = joint->free_tp.pos_cmd - emcmotCommand->offset;
+		    pos_cmd += emcmotCommand->offset;
+		} else {
+		    pos_cmd -= emcmotCommand->offset;
 	        }
 	        /* don't jog past limits */
 	        refresh_jog_limits(joint,joint_num);
-	        if (tmp1 > joint->max_jog_limit) {
+	        if (pos_cmd > joint->max_jog_limit) {
 		    break;
 	        }
-	        if (tmp1 < joint->min_jog_limit) {
+	        if (pos_cmd < joint->min_jog_limit) {
 		    break;
 	        }
-	        /* set target position */
-	        joint->free_tp.pos_cmd = tmp1;
-	        /* set velocity of jog */
-	        joint->free_tp.max_vel = fabs(emcmotCommand->vel);
-	        /* use max joint accel */
-	        joint->free_tp.max_acc = joint->acc_limit;
 	        /* lock out other jog sources */
 	        joint->kb_jjog_active = 1;
-	        /* and let it go */
-	        joint->free_tp.enable = 1;
+		smooth1d_replan(joint->free_tp, lin_to_SI(pos_cmd), lin_to_SI(fabs(emcmotCommand->vel)), lin_to_SI(joint->acc_limit));
                 for (axis_num = 0; axis_num < EMCMOT_MAX_AXIS; axis_num++) {
                     axis = &axes[axis_num];
                     if (axis != 0) { axis->teleop_tp.enable = 0; }
@@ -992,7 +987,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
 	        axis->teleop_tp.enable = 1;
                 for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
                     joint = &joints[joint_num];
-                    if (joint != 0) { joint->free_tp.enable = 0; }
+                    if (joint != 0) { smooth1d_stop(joint->free_tp); }
                 }
             }
 	    break;
@@ -1026,23 +1021,19 @@ void emcmotCommandHandler(void *arg, long servo_period)
                     break;
                 }
                 /*! \todo FIXME-- use 'goal' instead */
-                joint->free_tp.pos_cmd = emcmotCommand->offset;
+                double pos_cmd = emcmotCommand->offset;
                 /* don't jog past limits */
                 refresh_jog_limits(joint,joint_num);
-                if (joint->free_tp.pos_cmd > joint->max_jog_limit) {
-                    joint->free_tp.pos_cmd = joint->max_jog_limit;
+                if (pos_cmd > joint->max_jog_limit) {
+                    pos_cmd = joint->max_jog_limit;
                 }
-                if (joint->free_tp.pos_cmd < joint->min_jog_limit) {
-                    joint->free_tp.pos_cmd = joint->min_jog_limit;
+                if (pos_cmd < joint->min_jog_limit) {
+                    pos_cmd = joint->min_jog_limit;
                 }
-                /* set velocity of jog */
-                joint->free_tp.max_vel = fabs(emcmotCommand->vel);
-                /* use max joint accel */
-                joint->free_tp.max_acc = joint->acc_limit;
                 /* lock out other jog sources */
                 joint->kb_jjog_active = 1;
-                /* and let it go */
-                joint->free_tp.enable = 1;
+		/* and let it go */
+		smooth1d_replan(joint->free_tp, lin_to_SI(pos_cmd), lin_to_SI(fabs(emcmotCommand->vel)), lin_to_SI(joint->acc_limit));
                 SET_JOINT_ERROR_FLAG(joint, 0);
                 /* clear joint homed flag(s) if we don't have forward kins.
                    Otherwise, a transition into coordinated mode will incorrectly
@@ -1067,7 +1058,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
                 axis->teleop_tp.enable = 1;
                 for (joint_num = 0; joint_num < ALL_JOINTS; joint_num++) {
                    joint = &joints[joint_num];
-                   if (joint != 0) { joint->free_tp.enable = 0; }
+                   if (joint != 0) { smooth1d_stop(joint->free_tp); }
                 }
                 return;
             }
@@ -1490,7 +1481,7 @@ void emcmotCommandHandler(void *arg, long servo_period)
 	    }
 
 	    if (joint == NULL) { break; }
-            joint->free_tp.enable = 0; /* abort movement (jog, etc) in progress */
+            smooth1d_stop(joint->free_tp); /* abort movement (jog, etc) in progress */
 
             // ********************************************************
             // support for other homing modes (one sequence, one joint)

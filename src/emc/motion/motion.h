@@ -77,6 +77,7 @@ to another.
 #include "emcmotcfg.h"		/* EMCMOT_MAX_JOINTS */
 #include "kinematics.h"
 #include "simple_tp.h"
+#include "smooth1d.h"
 #include "rtapi_limits.h"
 #include <stdarg.h>
 #include "rtapi_bool.h"
@@ -189,6 +190,7 @@ extern "C" {
         EMCMOT_SET_AXIS_ACC_LIMIT,      /* set the max axis acc */
         EMCMOT_SET_AXIS_LOCKING_JOINT,  /* set the axis locking joint */
 
+        EMCMOT_SET_LINEAR_SCALE,        /* set length of a linear machine unit, in meters */
     } cmd_code_t;
 
 /* this enum lists the possible results of a command */
@@ -237,7 +239,7 @@ extern "C" {
 	int joint;		/* which joint index to use for below */
 	int axis;		/* which axis index to use for below */
 	int spindle; 	/* which spindle to use */
-	double scale;		/* velocity scale or spindle_speed scale arg */
+	double scale;		/* velocity scale, spindle_speed scale, or linear_scale */
 	double offset;		/* input, output, or home offset arg */
 	double home;		/* joint home position */
 	double home_final_vel;	/* joint velocity for moving from OFFSET to HOME */
@@ -485,7 +487,7 @@ Suggestion: Split this in to an Error and a Status flag register..
 	double ferror;		/* following error */
 	double ferror_limit;	/* limit depends on speed */
 	double ferror_high_mark;	/* max following error */
-	simple_tp_t free_tp;	/* planner for free mode motion */
+	smooth1d_t *free_tp;	/* planner for free mode motion */
 	int kb_jjog_active;	/* non-zero during a keyboard jog */
 	int wheel_jjog_active;	/* non-zero during a wheel jog */
 
@@ -751,6 +753,8 @@ Suggestion: Split this in to an Error and a Status flag register..
         double maxFeedScale;
         int inhibit_probe_jog_error;
         int inhibit_probe_home_error;
+
+	double linear_scale;	/* Length of a linear machine unit, in meters */
     } emcmot_config_t;
 
 /*********************************

@@ -111,7 +111,6 @@ typedef struct {
     hal_s32_t   *jjog_counts;	/* WPI: jogwheel position input */
     hal_bit_t   *jjog_enable;	/* RPI: enable jogwheel */
     hal_float_t *jjog_scale;	/* RPI: distance to jog on each count */
-    hal_float_t *jjog_accel_fraction;	/* RPI: to limit wheel jog accel */
     hal_bit_t   *jjog_vel_mode;	/* RPI: true for "velocity mode" jogwheel */
 } joint_hal_t;
 
@@ -291,6 +290,10 @@ extern void emcmot_config_change(void);
 extern void reportError(const char *fmt, ...) __attribute((format(printf,1,2))); /* Use the rtapi_print call */
 
 int joint_is_lockable(int joint_num);
+
+/* Convert from "machine units" to SI base units and vice versa */
+double lin_to_SI(double value);
+double SI_to_lin(double value);
 
 
  /* rtapi_get_time() returns a nanosecond value. In time, we should use a u64

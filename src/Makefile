@@ -154,6 +154,7 @@ SUBDIRS := \
     emc/motion emc/ini emc/rs274ngc emc/sai emc emc/pythonplugin \
     emc/motion-logger \
     emc/tooldata \
+    emc/smooth1d \
     \
     module_helper \
     \
@@ -1132,6 +1133,13 @@ modules: $(patsubst %.o,../rtlib/%.so,$(obj-m))
 	$(Q)objcopy -j .rtapi_export -O binary objects/$*.tmp objects/$*.sym
 	$(Q)(echo '{ global : '; tr -s '\0' < objects/$*.sym | xargs -r0 printf '%s;\n' | grep .; echo 'local : * ; };') > objects/$*.ver
 	$(Q)$(CC) -shared -Bsymbolic $(LDFLAGS) -Wl,--version-script,objects/$*.ver -o $@ $^ -lm
+
+../rtlib/motmod.so: objects/rtemc/motion/libsmooth1d.a
+	$(ECHO) Linking $@
+	$(Q)ld -d -r -o objects/$*.tmp $^ objects/rtemc/motion/libsmooth1d.a
+	$(Q)objcopy -j .rtapi_export -O binary objects/$*.tmp objects/$*.sym
+	$(Q)(echo '{ global : '; tr -s '\0' < objects/$*.sym | xargs -r0 printf '%s;\n' | grep .; echo 'local : * ; };') > objects/$*.ver
+	$(Q)$(CC) -shared -Bsymbolic $(LDFLAGS) -Wl,--version-script,objects/$*.ver -o $@ $^ objects/rtemc/motion/libsmooth1d.a -lm
 
 RTFLAGS += -fno-strict-aliasing -fwrapv
 

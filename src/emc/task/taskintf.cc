@@ -7,7 +7,7 @@
 * Author:
 * License: GPL Version 2
 * System: Linux
-*    
+*
 * Copyright (c) 2004 All rights reserved.
 *
 ********************************************************************/
@@ -35,7 +35,7 @@
 
 value_inihal_data old_inihal_data;
 
-/* define this to catch isnan errors, for rtlinux FPU register 
+/* define this to catch isnan errors, for rtlinux FPU register
    problem testing */
 #define ISNAN_TRAP
 
@@ -91,7 +91,7 @@ static int localMotionEchoSerialNumber = 0;
 
 /*
   In emcmot, we need to set the cycle time for traj, and the interpolation
-  rate, in any order, but both need to be done. 
+  rate, in any order, but both need to be done.
  */
 
 /*! functions involving joints */
@@ -205,7 +205,7 @@ int emcJointSetMaxPositionLimit(int joint, double limit)
     return retval;
 }
 
-int emcJointSetMotorOffset(int joint, double offset) 
+int emcJointSetMotorOffset(int joint, double offset)
 {
 #ifdef ISNAN_TRAP
     if (std::isnan(offset)) {
@@ -220,7 +220,7 @@ int emcJointSetMotorOffset(int joint, double offset)
     emcmotCommand.command = EMCMOT_SET_JOINT_MOTOR_OFFSET;
     emcmotCommand.joint = joint;
     emcmotCommand.motor_offset = offset;
-    
+
     int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
@@ -387,7 +387,7 @@ int emcJointSetMaxVelocity(int joint, double vel)
     emcmotCommand.command = EMCMOT_SET_JOINT_VEL_LIMIT;
     emcmotCommand.joint = joint;
     emcmotCommand.vel = vel;
-    
+
     int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
@@ -411,7 +411,7 @@ int emcJointSetMaxAcceleration(int joint, double acc)
     emcmotCommand.command = EMCMOT_SET_JOINT_ACC_LIMIT;
     emcmotCommand.joint = joint;
     emcmotCommand.acc = acc;
-    
+
     int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
@@ -421,7 +421,7 @@ int emcJointSetMaxAcceleration(int joint, double acc)
 }
 
 /*! functions involving carthesian Axes (X,Y,Z,A,B,C,U,V,W) */
-    
+
 int emcAxisSetMinPositionLimit(int axis, double limit)
 {
     CATCH_NAN(std::isnan(limit));
@@ -505,8 +505,8 @@ int emcAxisSetMaxAcceleration(int axis, double acc,double ext_offset_acc)
     if (acc < 0.0) {
 	acc = 0.0;
     }
-    
-    AxisConfig[axis].MaxAccel = acc;    
+
+    AxisConfig[axis].MaxAccel = acc;
 
     emcmotCommand.command = EMCMOT_SET_AXIS_ACC_LIMIT;
     emcmotCommand.axis = axis;
@@ -564,7 +564,7 @@ int emcAxisUpdate(EMC_AXIS_STAT stat[], int axis_mask)
 {
     int axis_num;
     emcmot_axis_status_t *axis;
-    
+
     for (axis_num = 0; axis_num < EMCMOT_MAX_AXIS; axis_num++) {
         if(!(axis_mask & (1 << axis_num))) continue;
         axis = &(emcmotStatus.axis_status[axis_num]);
@@ -816,7 +816,7 @@ int emcJogIncr(int nr, double incr, double vel, int jjogmode)
 
 int emcJogAbs(int nr, double pos, double vel, int jjogmode)
 {
-    if (jjogmode) {        
+    if (jjogmode) {
         if (nr < 0 || nr >= EMCMOT_MAX_JOINTS) { return 0; }
         if (vel > JointConfig[nr].MaxVel) {
             vel = JointConfig[nr].MaxVel;
@@ -994,7 +994,7 @@ int emcTrajSetAxes(int axismask)
 
     TrajConfig.DeprecatedAxes = axes;
     TrajConfig.AxisMask = axismask;
-    
+
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%d, %d)\n", __FUNCTION__, axes, axismask);
     }
@@ -1029,10 +1029,15 @@ int emcTrajSetUnits(double linearUnits, double angularUnits)
     TrajConfig.LinearUnits = linearUnits;
     TrajConfig.AngularUnits = angularUnits;
 
+    emcmotCommand.command = EMCMOT_SET_LINEAR_SCALE;
+    emcmotCommand.scale = 0.001/linearUnits;
+    int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
+
     if (emc_debug & EMC_DEBUG_CONFIG) {
         rcs_print("%s(%.4f, %.4f)\n", __FUNCTION__, linearUnits, angularUnits);
     }
-    return 0;
+
+    return retval;
 }
 
 int emcTrajSetMode(int mode)
@@ -1154,8 +1159,8 @@ int emcTrajSetHome(EmcPose home)
     int retval = usrmotWriteEmcmotCommand(&emcmotCommand);
 
     if (emc_debug & EMC_DEBUG_CONFIG) {
-        rcs_print("%s(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f) returned %d\n", 
-          __FUNCTION__, home.tran.x, home.tran.y, home.tran.z, home.a, home.b, home.c, 
+        rcs_print("%s(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f) returned %d\n",
+          __FUNCTION__, home.tran.x, home.tran.y, home.tran.z, home.a, home.b, home.c,
           home.u, home.v, home.w, retval);
     }
     return retval;
@@ -1602,12 +1607,12 @@ int emcTrajUpdate(EMC_TRAJ_STAT * stat)
     stat->probeval = emcmotStatus.probeVal;
     stat->probing = emcmotStatus.probing;
     stat->probe_tripped = emcmotStatus.probeTripped;
-    
+
     if (emcmotStatus.motionFlag & EMCMOT_MOTION_COORD_BIT)
         enables = emcmotStatus.enables_queued;
     else
         enables = emcmotStatus.enables_new;
-    
+
     stat->feed_override_enabled = enables & FS_ENABLED;
     stat->adaptive_feed_enabled = enables & AF_ENABLED;
     stat->feed_hold_enabled = enables & FH_ENABLED;
@@ -1708,7 +1713,7 @@ int emcMotionInit()
 {
     int r;
     int joint, axis;
-    
+
     r = emcTrajInit(); // we want to check Traj first, the sane defaults for units are there
     // it also determines the number of existing joints, and axes
     if (r != 0) {
@@ -1789,7 +1794,7 @@ int emcMotionSetDebug(int debug)
 }
 
 /*! \function emcMotionSetAout()
-    
+
     This function sends a EMCMOT_SET_AOUT message to the motion controller.
     That one plans a AOUT command when motion starts or right now.
 
@@ -1812,7 +1817,7 @@ int emcMotionSetAout(unsigned char index, double start, double end, unsigned cha
 }
 
 /*! \function emcMotionSetDout()
-    
+
     This function sends a EMCMOT_SET_DOUT message to the motion controller.
     That one plans a DOUT command when motion starts or right now.
 
