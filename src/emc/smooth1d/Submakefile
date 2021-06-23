@@ -1,7 +1,6 @@
+-include emc/smooth1d/target/release/libsmooth1d.d
 
-# Let cargo decide if the target needs to be rebuilt or not
-.PHONY: objects/rtemc/motion/libsmooth1d.a
-
-objects/rtemc/motion/libsmooth1d.a:
+emc/smooth1d/target/release/libsmooth1d.a:
 	cd emc/smooth1d && cargo build --release
-	cp emc/smooth1d/target/release/libsmooth1d.a objects/rtemc/motion/
+	# Remove absolute paths in the .d file cargo produced:
+	sed -i 's;$(CURDIR)/;;g' emc/smooth1d/target/release/libsmooth1d.d
