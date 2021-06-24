@@ -1118,7 +1118,7 @@ motmod-objs += emc/motion/dbuf.o
 motmod-objs += emc/nml_intf/emcpose.o
 motmod-objs += libnml/posemath/_posemath.o
 motmod-objs += libnml/posemath/sincos.o $(MATHSTUB)
-../rtlib/motmod.so: emc/smooth1d/target/release/libsmooth1d.a
+../rtlib/motmod.so: ../lib/libsmooth1d.a
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
 ifeq ($(BUILD_SYS),uspace)
@@ -1134,6 +1134,13 @@ modules: $(patsubst %.o,../rtlib/%.so,$(obj-m))
 	$(Q)objcopy -j .rtapi_export -O binary objects/$*.tmp objects/$*.sym
 	$(Q)(echo '{ global : '; tr -s '\0' < objects/$*.sym | xargs -r0 printf '%s;\n' | grep .; echo 'local : * ; };') > objects/$*.ver
 	$(Q)$(CC) -shared -Bsymbolic $(LDFLAGS) -Wl,--version-script,objects/$*.ver -o $@ $^ -lm
+
+../rtlib/motmod.so:
+	$(ECHO) Linking $@
+	$(Q)ld -d -r -o objects/$*.tmp $^
+	$(Q)objcopy -j .rtapi_export -O binary objects/$*.tmp objects/$*.sym
+	$(Q)(echo '{ global : '; tr -s '\0' < objects/$*.sym | xargs -r0 printf '%s;\n' | grep .; echo 'local : * ; };') > objects/$*.ver
+	$(Q)$(CC) -shared -Bsymbolic $(LDFLAGS) -Wl,--version-script,objects/$*.ver -o $@ $^ -lsmooth1d -lm
 
 RTFLAGS += -fno-strict-aliasing -fwrapv
 

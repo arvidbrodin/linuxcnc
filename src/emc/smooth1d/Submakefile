@@ -4,3 +4,6 @@ emc/smooth1d/target/release/libsmooth1d.a:
 	cd emc/smooth1d && cargo build --release
 	# Remove absolute paths in the .d file cargo produced:
 	sed -i 's;$(CURDIR)/;;g' emc/smooth1d/target/release/libsmooth1d.d
+
+../lib/libsmooth1d.a: emc/smooth1d/target/release/libsmooth1d.a
+	cp $^ $@
